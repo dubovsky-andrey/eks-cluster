@@ -1,65 +1,99 @@
-# ./envs/stage/karpenter.tf
+################################
+# 1. AWS-ресурсы для Karpenter (IAM, SQS, EventBridge)
+################################
+module "karpenter" {
+  source  = "terraform-aws-modules/eks/aws//modules/karpenter"
+  version = "~> 21.0"
 
-# Создаем неймспейс для Karpenter
-resource "kubernetes_namespace" "karpenter" {
-  depends_on = [module.eks]
+  cluster_name = module.eks.cluster_name
 
-  metadata {
-    name = var.karpenter_namespace
+  create_node_iam_role = false
+  node_iam_role_arn    = module.eks.eks_managed_node_groups["initial"].iam_role_arn
+  create_access_entry  = false
+
+  node_iam_role_additional_policies = {
+    AmazonSSMManagedInstanceCore = "arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore"
   }
+
+  tags = var.tags
 }
 
-# Устанавливаем Karpenter с помощью Helm
-resource "helm_release" "karpenter" {
-  depends_on = [kubernetes_namespace.karpenter, module.karpenter]
+# ################################
+# # 2. Устанавливаем Karpenter через Helm
+# ################################
+# resource "helm_release" "karpenter" {
+#   provider = kubernetes.eks # <-- Это вы сделали правильно!
 
-  name       = "karpenter"
-  namespace  = kubernetes_namespace.karpenter.metadata.0.name
-  chart      = "karpenter"
-  repository = "oci://public.ecr.aws/karpenter"
-  version    = var.karpenter_version
-}
+#   name             = "karpenter"
+#   repository       = "https://charts.karpenter.sh"
+#   chart            = "karpenter"
+#   version          = var.karpenter_version
+#   namespace        = var.karpenter_namespace
+#   create_namespace = true
+#   skip_crds        = false
 
-# Note: The Kubernetes manifests below are commented out because they cause
-# "no client config" errors during terraform plan/validate. These should be
-# applied separately after the EKS cluster is running using kubectl.
+#   set = [
+#     {
+#       name  = "serviceAccount.create"
+#       value = "false"
+#     },
+#     {
+#       name  = "serviceAccount.annotations.eks\\.amazonaws\\.com/role-arn"
+#       value = module.karpenter.iam_role_arn
+#     },
+#     {
+#       name  = "settings.aws.clusterName"
+#       value = module.eks.cluster_name
+#     },
+#     {
+#       name  = "settings.aws.clusterEndpoint"
+#       value = module.eks.cluster_endpoint
+#     },
+#     {
+#       name  = "settings.aws.subnetSelector"
+#       value = yamlencode({ "karpenter.sh/discovery" = var.cluster_name })
+#     },
+#     {
+#       name  = "settings.aws.securityGroupSelector"
+#       value = yamlencode({ "kubernetes.io/cluster/${var.cluster_name}" = "owned" })
+#     }
+#   ]
 
-# --- Конфигурация для x86 (amd64) ---
-# Apply these manifests after cluster is ready:
-# kubectl apply -f - <<EOF
-# apiVersion: karpenter.k8s.aws/v1beta1
-# kind: EC2NodeClass
-# metadata:
-#   name: default-amd64
-# spec:
-#   role: ${module.eks.eks_managed_node_groups["initial"].iam_role_name}
-#   subnetSelectorTerms:
-#   - tags:
-#       karpenter.sh/discovery: ${var.cluster_name}
-#   securityGroupSelectorTerms:
-#   - tags:
-#       karpenter.sh/discovery: ${var.cluster_name}
-#   amiFamily: AL2023
-#   tags:
-#     Name: ${var.cluster_name}/karpenter/amd64
-# EOF
+#   depends_on = [module.karpenter]
+# }
 
-# --- Конфигурация для Graviton (arm64) ---
-# Apply these manifests after cluster is ready:
-# kubectl apply -f - <<EOF
-# apiVersion: karpenter.k8s.aws/v1beta1
-# kind: EC2NodeClass
-# metadata:
-#   name: default-arm64
-# spec:
-#   role: ${module.eks.eks_managed_node_groups["initial"].iam_role_name}
-#   subnetSelectorTerms:
-#   - tags:
-#       karpenter.sh/discovery: ${var.cluster_name}
-#   securityGroupSelectorTerms:
-#   - tags:
-#       karpenter.sh/discovery: ${var.cluster_name}
-#   amiFamily: AL2023
-#   tags:
-#     Name: ${var.cluster_name}/karpenter/arm64
-# EOF
+# ################################
+# # 3. Применяем Provisioner через kubernetes_manifest (ПРАВИЛЬНЫЙ СПОСОБ)
+# ################################
+# resource "kubernetes_manifest" "default_provisioner" {
+#   provider = kubernetes.eks # <-- Указываем правильный провайдер!
+
+#   manifest = {
+#     "apiVersion" = "karpenter.sh/v1alpha5"
+#     "kind"       = "Provisioner"
+#     "metadata" = {
+#       "name"      = "default"
+#       "namespace" = var.karpenter_namespace
+#     }
+#     "spec" = {
+#       "requirements" = [
+#         {
+#           "key"      = "karpenter.k8s.aws/instance-family"
+#           "operator" = "In"
+#           "values"   = ["t3"]
+#         },
+#       ]
+#       "provider" = {
+#         "subnetSelector" = {
+#           "karpenter.sh/discovery" = var.cluster_name
+#         }
+#         "securityGroupSelector" = {
+#           "kubernetes.io/cluster/${var.cluster_name}" = "owned"
+#         }
+#       }
+#       "ttlSecondsAfterEmpty" = 30
+#     }
+#   }
+
+#   depends_on = [helm_release.karpenter]
+# }

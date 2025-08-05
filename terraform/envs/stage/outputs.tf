@@ -1,18 +1,17 @@
-# output "cluster_name" {
-#   description = "Name of the EKS cluster"
-#   value       = module.eks.cluster_name
-# }
+output "cluster_name" {
+  description = "Name of the EKS cluster"
+  value       = module.eks.cluster_name
+}
 
-# output "cluster_endpoint" {
-#   description = "Endpoint for EKS control plane"
-#   value       = module.eks.cluster_endpoint
-# }
+output "cluster_endpoint" {
+  description = "Endpoint for EKS control plane"
+  value       = module.eks.cluster_endpoint
+}
 
-# output "cluster_certificate_authority_data" {
-#   description = "Base64 encoded certificate data required to communicate with the cluster"
-#   value       = module.eks.cluster_certificate_authority_data
-#   sensitive   = true
-# }
+output "cluster_oidc_provider_arn" {
+  description = "The ARN of the OIDC Provider if created"
+  value       = module.eks.oidc_provider_arn
+}
 
 output "vpc_id" {
   description = "ID of the VPC"
@@ -32,27 +31,4 @@ output "public_subnets" {
 output "karpenter_namespace" {
   description = "Kubernetes namespace where Karpenter is deployed"
   value       = var.karpenter_namespace
-}
-
-output "oidc_provider_arn" {
-  description = "ARN of the OIDC provider"
-  value       = module.eks.oidc_provider_arn
-}
-
-
-# ./envs/stage/outputs.tf
-
-output "cluster_name" {
-  description = "Name of the EKS cluster"
-  value       = module.eks.cluster_name
-}
-
-output "cluster_endpoint" {
-  description = "Endpoint for EKS control plane"
-  value       = module.eks.cluster_endpoint
-}
-
-output "cluster_oidc_provider_arn" {
-  description = "The ARN of the OIDC Provider if created"
-  value       = module.eks.oidc_provider_arn
 }
